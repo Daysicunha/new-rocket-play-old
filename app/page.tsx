@@ -1,4 +1,4 @@
-import { getAssessorados } from "@/lib/assessorados";
+import { getAssessorados } from "@/lib/catalogo";
 
 export const dynamic = "force-dynamic";
 
