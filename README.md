@@ -10,15 +10,26 @@ A integração está sendo construída em:
 
 A branch `main` permanece sem alterações até aprovação final.
 
-## Estrutura atual
+## Arquitetura aprovada
+
+A New Rocket é o primeiro catálogo de uma estrutura multiempresa compartilhada no Supabase. Cada catálogo é isolado por `catalogo_id` e por RLS.
+
+- `catalogos` — identifica cada cliente/catálogo
+- `catalogo_usuarios` — vincula usuários autorizados ao catálogo correto
+- `catalogo_itens` — armazena os itens de todos os catálogos, sempre separados por `catalogo_id`
+- `catalogo-media` — bucket compartilhado, com uma pasta por catálogo
+
+Na New Rocket, os itens representam assessorados. O painel exibe apenas os campos necessários: nome artístico, função, foto, Instagram, vídeo/Reel, ordem e status.
+
+## Estrutura do projeto
 
 - `app/page.tsx` — página pública em Next.js
 - `app/login/page.tsx` — login administrativo
-- `app/admin/page.tsx` — proteção e autorização do painel
-- `app/admin/AdminDashboard.tsx` — gestão de assessorados
-- `lib/assessorados.ts` — leitura pública e fallback seguro
+- `app/admin/page.tsx` — autenticação e autorização por catálogo
+- `app/admin/AdminDashboard.tsx` — gestão dos assessorados
+- `lib/catalogo.ts` — adaptador entre o modelo multiempresa e a interface da New Rocket
 - `lib/supabase/` — clientes SSR/browser e renovação de sessão
-- `supabase/migrations/20260827_assessorados.sql` — banco, RLS, Storage e dados iniciais
+- `supabase/migrations/20260827_catalogos_multiempresa.sql` — estrutura multiempresa, RLS, Storage e dados iniciais
 - `public/assets/img/` — imagens reaproveitadas do site atual
 
 ## O que o painel permite
@@ -26,7 +37,6 @@ A branch `main` permanece sem alterações até aprovação final.
 - cadastrar assessorado
 - editar dados
 - publicar ou ocultar
-- marcar como destaque
 - ordenar exibição
 - informar Instagram e vídeo/Reel
 - enviar foto JPG, PNG ou WebP de até 5 MB
@@ -35,12 +45,22 @@ A branch `main` permanece sem alterações até aprovação final.
 ## Segurança
 
 - o painel exige login Supabase
-- login válido não concede administração automaticamente
-- somente usuários registrados em `public.admin_users` podem gerenciar dados e imagens
-- leitura pública da tabela retorna somente assessorados ativos
-- RLS está habilitado nas tabelas expostas
-- Storage permite escrita somente a administradores autorizados
-- nenhuma chave secreta deve ser commitada; o projeto usa apenas variáveis públicas necessárias ao cliente
+- login válido não concede acesso automaticamente
+- o usuário precisa estar vinculado ao catálogo em `catalogo_usuarios`
+- um usuário só pode gravar itens do catálogo ao qual pertence
+- leitura pública retorna apenas itens ativos de catálogos ativos
+- RLS está habilitado nas três tabelas multiempresa
+- imagens são gravadas em `catalogo-media/<catalogo_id>/...`
+- Storage valida o vínculo do usuário com a pasta do catálogo antes de permitir escrita
+- nenhuma chave secreta é commitada
+
+## New Rocket Play
+
+Slug do catálogo:
+
+`new-rocket-play`
+
+Os sete assessorados que já estavam publicados no site foram usados como dados iniciais. Os demais nomes do briefing não foram publicados automaticamente porque ainda precisam de confirmação, foto e links oficiais.
 
 ## Variáveis de ambiente
 
@@ -68,7 +88,7 @@ npm run dev
 
 1. Revisar o Pull Request em modo rascunho.
 2. Conferir a página pública em desktop e mobile.
-3. Entrar em `/login` com uma conta administrativa autorizada.
+3. Entrar em `/login` com uma conta vinculada à New Rocket.
 4. Criar um assessorado de teste.
 5. Editar o cadastro.
 6. Ocultar e confirmar que ele some da página pública.
