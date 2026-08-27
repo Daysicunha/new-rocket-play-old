@@ -17,6 +17,9 @@ const emptyForm: FormState = {
   ordem: 0,
 };
 
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
 export default function AdminDashboard({ email }: { email: string }) {
   const supabase = createClient();
   const [items, setItems] = useState<Assessorado[]>([]);
@@ -60,6 +63,13 @@ export default function AdminDashboard({ email }: { email: string }) {
   }
 
   async function uploadImage(file: File) {
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      throw new Error("Use uma imagem JPG, PNG ou WebP.");
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      throw new Error("A imagem deve ter no máximo 5 MB.");
+    }
+
     const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
     const path = `${crypto.randomUUID()}.${extension}`;
     const { error } = await supabase.storage.from("assessorados").upload(path, file, { upsert: false });
@@ -74,8 +84,11 @@ export default function AdminDashboard({ email }: { email: string }) {
     setMessage("");
     const payload = {
       ...form,
-      instagram_url: form.instagram_url || null,
-      video_url: form.video_url || null,
+      nome: form.nome.trim(),
+      funcao: form.funcao.trim(),
+      foto_url: form.foto_url.trim(),
+      instagram_url: form.instagram_url?.trim() || null,
+      video_url: form.video_url?.trim() || null,
     };
     const result = editingId
       ? await supabase.from("assessorados").update(payload).eq("id", editingId)
@@ -166,10 +179,10 @@ export default function AdminDashboard({ email }: { email: string }) {
             <form className="admin-form" onSubmit={saveItem}>
               <label>Nome artístico<input required value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex.: Diego Marçal" /></label>
               <div className="form-grid"><label>Função<input required value={form.funcao} onChange={(e) => setForm({ ...form, funcao: e.target.value })} placeholder="Cantor, Pregador, Dupla…" /></label><label>Ordem<input type="number" min="0" value={form.ordem} onChange={(e) => setForm({ ...form, ordem: Number(e.target.value) })} /></label></div>
-              <label>Instagram oficial<input value={form.instagram_url ?? ""} onChange={(e) => setForm({ ...form, instagram_url: e.target.value })} placeholder="https://instagram.com/..." /></label>
-              <label>Vídeo / Reel<input value={form.video_url ?? ""} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="https://instagram.com/reel/..." /></label>
-              <label>Foto<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadImage(file).catch((error) => setMessage(error.message)); }} /></label>
-              <label>Ou URL da foto<input value={form.foto_url} onChange={(e) => setForm({ ...form, foto_url: e.target.value })} placeholder="https://..." /></label>
+              <label>Instagram oficial<input type="url" value={form.instagram_url ?? ""} onChange={(e) => setForm({ ...form, instagram_url: e.target.value })} placeholder="https://instagram.com/..." /></label>
+              <label>Vídeo / Reel<input type="url" value={form.video_url ?? ""} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="https://instagram.com/reel/..." /></label>
+              <label>Foto<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadImage(file).catch((error) => setMessage(error instanceof Error ? error.message : "Falha no upload.")); }} /></label>
+              <label>Ou URL da foto<input type="url" value={form.foto_url} onChange={(e) => setForm({ ...form, foto_url: e.target.value })} placeholder="https://..." /></label>
               {form.foto_url && <img className="preview-image" src={form.foto_url} alt="Prévia" />}
               <label className="check-row"><input type="checkbox" checked={form.destaque} onChange={(e) => setForm({ ...form, destaque: e.target.checked })} /> Marcar como destaque</label>
               <label className="check-row"><input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} /> Publicar no site</label>
