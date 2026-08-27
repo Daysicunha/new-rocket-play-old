@@ -2,9 +2,17 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Assessorado } from "@/lib/assessorados";
+import type { CatalogoItem } from "@/lib/catalogo";
 
-type FormState = Omit<Assessorado, "id">;
+type FormState = {
+  nome: string;
+  funcao: string;
+  foto_url: string;
+  instagram_url: string;
+  video_url: string;
+  ativo: boolean;
+  ordem: number;
+};
 
 const emptyForm: FormState = {
   nome: "",
@@ -12,19 +20,15 @@ const emptyForm: FormState = {
   foto_url: "",
   instagram_url: "",
   video_url: "",
-  destaque: false,
   ativo: true,
   ordem: 0,
 };
 
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-
-export default function AdminDashboard({ email }: { email: string }) {
+export default function AdminDashboard({ email, catalogoId }: { email: string; catalogoId: string }) {
   const supabase = createClient();
-  const [items, setItems] = useState<Assessorado[]>([]);
+  const [items, setItems] = useState<CatalogoItem[]>([]);
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -33,18 +37,23 @@ export default function AdminDashboard({ email }: { email: string }) {
 
   async function loadItems() {
     setLoading(true);
-    const { data, error } = await supabase.from("assessorados").select("*").order("ordem");
+    const { data, error } = await supabase
+      .from("catalogo_itens")
+      .select("id,catalogo_id,titulo,subtitulo,descricao,imagem_url,link_principal,link_secundario,preco,categoria,destaque,ativo,ordem,extras")
+      .eq("catalogo_id", catalogoId)
+      .order("ordem", { ascending: true });
+
     if (error) setMessage(error.message);
-    else setItems((data ?? []) as Assessorado[]);
+    else setItems((data ?? []) as CatalogoItem[]);
     setLoading(false);
   }
 
-  useEffect(() => { void loadItems(); }, []);
+  useEffect(() => { void loadItems(); }, [catalogoId]);
 
   const visibleItems = useMemo(() => {
     const value = query.toLocaleLowerCase("pt-BR").trim();
     if (!value) return items;
-    return items.filter((item) => `${item.nome} ${item.funcao}`.toLocaleLowerCase("pt-BR").includes(value));
+    return items.filter((item) => `${item.titulo} ${item.subtitulo ?? ""}`.toLocaleLowerCase("pt-BR").includes(value));
   }, [items, query]);
 
   function startCreate() {
@@ -54,27 +63,31 @@ export default function AdminDashboard({ email }: { email: string }) {
     setDrawerOpen(true);
   }
 
-  function startEdit(item: Assessorado) {
-    const { id, ...values } = item;
-    setEditingId(id);
-    setForm(values);
+  function startEdit(item: CatalogoItem) {
+    setEditingId(item.id);
+    setForm({
+      nome: item.titulo,
+      funcao: item.subtitulo ?? "",
+      foto_url: item.imagem_url,
+      instagram_url: item.link_principal ?? "",
+      video_url: item.link_secundario ?? "",
+      ativo: item.ativo,
+      ordem: item.ordem,
+    });
     setMessage("");
     setDrawerOpen(true);
   }
 
   async function uploadImage(file: File) {
-    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
-      throw new Error("Use uma imagem JPG, PNG ou WebP.");
-    }
-    if (file.size > MAX_IMAGE_SIZE) {
-      throw new Error("A imagem deve ter no máximo 5 MB.");
-    }
+    if (!file.type.match(/^image\/(jpeg|png|webp)$/)) throw new Error("Use uma imagem JPG, PNG ou WebP.");
+    if (file.size > 5 * 1024 * 1024) throw new Error("A imagem deve ter no máximo 5 MB.");
 
     const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
-    const path = `${crypto.randomUUID()}.${extension}`;
-    const { error } = await supabase.storage.from("assessorados").upload(path, file, { upsert: false });
+    const path = `${catalogoId}/${crypto.randomUUID()}.${extension}`;
+    const { error } = await supabase.storage.from("catalogo-media").upload(path, file, { upsert: false });
     if (error) throw error;
-    const { data } = supabase.storage.from("assessorados").getPublicUrl(path);
+
+    const { data } = supabase.storage.from("catalogo-media").getPublicUrl(path);
     setForm((current) => ({ ...current, foto_url: data.publicUrl }));
   }
 
@@ -82,17 +95,21 @@ export default function AdminDashboard({ email }: { email: string }) {
     event.preventDefault();
     setSaving(true);
     setMessage("");
+
     const payload = {
-      ...form,
-      nome: form.nome.trim(),
-      funcao: form.funcao.trim(),
-      foto_url: form.foto_url.trim(),
-      instagram_url: form.instagram_url?.trim() || null,
-      video_url: form.video_url?.trim() || null,
+      catalogo_id: catalogoId,
+      titulo: form.nome.trim(),
+      subtitulo: form.funcao.trim(),
+      imagem_url: form.foto_url,
+      link_principal: form.instagram_url.trim() || null,
+      link_secundario: form.video_url.trim() || null,
+      ativo: form.ativo,
+      ordem: form.ordem,
     };
+
     const result = editingId
-      ? await supabase.from("assessorados").update(payload).eq("id", editingId)
-      : await supabase.from("assessorados").insert(payload);
+      ? await supabase.from("catalogo_itens").update(payload).eq("id", editingId).eq("catalogo_id", catalogoId)
+      : await supabase.from("catalogo_itens").insert(payload);
 
     if (result.error) setMessage(result.error.message);
     else {
@@ -103,8 +120,13 @@ export default function AdminDashboard({ email }: { email: string }) {
     setSaving(false);
   }
 
-  async function toggleVisibility(item: Assessorado) {
-    const { error } = await supabase.from("assessorados").update({ ativo: !item.ativo }).eq("id", item.id);
+  async function toggleVisibility(item: CatalogoItem) {
+    const { error } = await supabase
+      .from("catalogo_itens")
+      .update({ ativo: !item.ativo })
+      .eq("id", item.id)
+      .eq("catalogo_id", catalogoId);
+
     if (error) setMessage(error.message);
     else {
       setItems((current) => current.map((row) => row.id === item.id ? { ...row, ativo: !row.ativo } : row));
@@ -112,9 +134,14 @@ export default function AdminDashboard({ email }: { email: string }) {
     }
   }
 
-  async function deleteItem(item: Assessorado) {
-    if (!window.confirm(`Excluir definitivamente “${item.nome}”?`)) return;
-    const { error } = await supabase.from("assessorados").delete().eq("id", item.id);
+  async function deleteItem(item: CatalogoItem) {
+    if (!window.confirm(`Excluir definitivamente “${item.titulo}”?`)) return;
+    const { error } = await supabase
+      .from("catalogo_itens")
+      .delete()
+      .eq("id", item.id)
+      .eq("catalogo_id", catalogoId);
+
     if (error) setMessage(error.message);
     else {
       setItems((current) => current.filter((row) => row.id !== item.id));
@@ -128,7 +155,6 @@ export default function AdminDashboard({ email }: { email: string }) {
   }
 
   const activeCount = items.filter((item) => item.ativo).length;
-  const featuredCount = items.filter((item) => item.destaque).length;
 
   return (
     <main className="admin-page">
@@ -152,7 +178,7 @@ export default function AdminDashboard({ email }: { email: string }) {
         <div className="admin-stats">
           <article className="admin-stat"><span>Cadastrados</span><strong>{items.length}</strong></article>
           <article className="admin-stat"><span>Publicados</span><strong>{activeCount}</strong></article>
-          <article className="admin-stat"><span>Destaques</span><strong>{featuredCount}</strong></article>
+          <article className="admin-stat"><span>Ocultos</span><strong>{items.length - activeCount}</strong></article>
         </div>
 
         <section className="admin-panel">
@@ -161,8 +187,8 @@ export default function AdminDashboard({ email }: { email: string }) {
             <div className="admin-list">
               {visibleItems.map((item) => (
                 <article className="admin-row" key={item.id}>
-                  <div className="admin-person"><img src={item.foto_url || "/assets/img/IMG_1661.PNG"} alt="" /><div><strong>{item.nome}</strong><small>{item.funcao}</small></div></div>
-                  <div>{item.destaque ? "★ Destaque" : "—"}</div>
+                  <div className="admin-person"><img src={item.imagem_url || "/assets/img/IMG_1661.PNG"} alt="" /><div><strong>{item.titulo}</strong><small>{item.subtitulo}</small></div></div>
+                  <div>Ordem {item.ordem}</div>
                   <div><button className={item.ativo ? "status-pill live" : "status-pill"} type="button" onClick={() => void toggleVisibility(item)}>{item.ativo ? "Publicado" : "Oculto"}</button></div>
                   <div className="row-actions"><button className="ghost-btn" type="button" onClick={() => startEdit(item)}>Editar</button><button className="danger-btn" type="button" onClick={() => void deleteItem(item)}>Excluir</button></div>
                 </article>
@@ -179,12 +205,11 @@ export default function AdminDashboard({ email }: { email: string }) {
             <form className="admin-form" onSubmit={saveItem}>
               <label>Nome artístico<input required value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} placeholder="Ex.: Diego Marçal" /></label>
               <div className="form-grid"><label>Função<input required value={form.funcao} onChange={(e) => setForm({ ...form, funcao: e.target.value })} placeholder="Cantor, Pregador, Dupla…" /></label><label>Ordem<input type="number" min="0" value={form.ordem} onChange={(e) => setForm({ ...form, ordem: Number(e.target.value) })} /></label></div>
-              <label>Instagram oficial<input type="url" value={form.instagram_url ?? ""} onChange={(e) => setForm({ ...form, instagram_url: e.target.value })} placeholder="https://instagram.com/..." /></label>
-              <label>Vídeo / Reel<input type="url" value={form.video_url ?? ""} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="https://instagram.com/reel/..." /></label>
+              <label>Instagram oficial<input type="url" value={form.instagram_url} onChange={(e) => setForm({ ...form, instagram_url: e.target.value })} placeholder="https://instagram.com/..." /></label>
+              <label>Vídeo / Reel<input type="url" value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="https://instagram.com/reel/..." /></label>
               <label>Foto<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => { const file = e.target.files?.[0]; if (file) void uploadImage(file).catch((error) => setMessage(error instanceof Error ? error.message : "Falha no upload.")); }} /></label>
               <label>Ou URL da foto<input type="url" value={form.foto_url} onChange={(e) => setForm({ ...form, foto_url: e.target.value })} placeholder="https://..." /></label>
               {form.foto_url && <img className="preview-image" src={form.foto_url} alt="Prévia" />}
-              <label className="check-row"><input type="checkbox" checked={form.destaque} onChange={(e) => setForm({ ...form, destaque: e.target.checked })} /> Marcar como destaque</label>
               <label className="check-row"><input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} /> Publicar no site</label>
               <div className="drawer-actions"><button className="ghost-btn" type="button" onClick={() => setDrawerOpen(false)}>Cancelar</button><button className="btn-primary" type="submit" disabled={saving}>{saving ? "Salvando…" : "Salvar assessorado"}</button></div>
             </form>
