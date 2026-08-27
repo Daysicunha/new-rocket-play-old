@@ -11,5 +11,13 @@ export default async function AdminPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const { data: admin, error } = await supabase
+    .from("admin_users")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (error || !admin) redirect("/login?unauthorized=1");
+
   return <AdminDashboard email={user.email ?? "usuário"} />;
 }
