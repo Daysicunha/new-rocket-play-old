@@ -19,7 +19,7 @@ export const assessoradosIniciais: Assessorado[] = [
   { id: 4, nome: "Eduardo Silva", funcao: "Cantor", foto_url: "/assets/img/Eduardo%20Silva.jpeg", instagram_url: null, video_url: null, destaque: false, ativo: true, ordem: 4 },
   { id: 5, nome: "Irmãs Miguel", funcao: "Dupla", foto_url: "/assets/img/Irm%C3%A3s%20Miguel.jpeg", instagram_url: null, video_url: null, destaque: false, ativo: true, ordem: 5 },
   { id: 6, nome: "Marilene e Gabriela", funcao: "Dupla", foto_url: "/assets/img/Marilene%20e%20Gabriela.jpeg", instagram_url: null, video_url: null, destaque: false, ativo: true, ordem: 6 },
-  { id: 7, nome: "Natanael Santos", funcao: "Preletor", foto_url: "/assets/img/Natanael%20Santos.jpeg", instagram_url: null, video_url: null, destaque: false, ativo: true, ordem: 7 }
+  { id: 7, nome: "Natanael Santos", funcao: "Preletor", foto_url: "/assets/img/Natanael%20Santos.jpeg", instagram_url: null, video_url: null, destaque: false, ativo: true, ordem: 7 },
 ];
 
 export async function getAssessorados(): Promise<Assessorado[]> {
@@ -32,6 +32,6 @@ export async function getAssessorados(): Promise<Assessorado[]> {
     .eq("ativo", true)
     .order("ordem", { ascending: true });
 
-  if (error || !data?.length) return assessoradosIniciais;
-  return data as Assessorado[];
+  if (error) return assessoradosIniciais;
+  return (data ?? []) as Assessorado[];
 }
