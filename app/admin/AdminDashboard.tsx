@@ -25,7 +25,7 @@ const emptyForm: FormState = {
 };
 
 export default function AdminDashboard({ email, catalogoId }: { email: string; catalogoId: string }) {
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   const [items, setItems] = useState<CatalogoItem[]>([]);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -35,20 +35,39 @@ export default function AdminDashboard({ email, catalogoId }: { email: string; c
   const [message, setMessage] = useState("");
   const [query, setQuery] = useState("");
 
-  async function loadItems() {
-    setLoading(true);
-    const { data, error } = await supabase
+  async function fetchItems() {
+    return supabase
       .from("catalogo_itens")
       .select("id,catalogo_id,titulo,subtitulo,descricao,imagem_url,link_principal,link_secundario,preco,categoria,destaque,ativo,ordem,extras")
       .eq("catalogo_id", catalogoId)
       .order("ordem", { ascending: true });
-
-    if (error) setMessage(error.message);
-    else setItems((data ?? []) as CatalogoItem[]);
-    setLoading(false);
   }
 
-  useEffect(() => { void loadItems(); }, [catalogoId]);
+  async function loadItems() {
+    const { data, error } = await fetchItems();
+    if (error) setMessage(error.message);
+    else setItems((data ?? []) as CatalogoItem[]);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialItems() {
+      const { data, error } = await supabase
+        .from("catalogo_itens")
+        .select("id,catalogo_id,titulo,subtitulo,descricao,imagem_url,link_principal,link_secundario,preco,categoria,destaque,ativo,ordem,extras")
+        .eq("catalogo_id", catalogoId)
+        .order("ordem", { ascending: true });
+
+      if (cancelled) return;
+      if (error) setMessage(error.message);
+      else setItems((data ?? []) as CatalogoItem[]);
+      setLoading(false);
+    }
+
+    void loadInitialItems();
+    return () => { cancelled = true; };
+  }, [catalogoId, supabase]);
 
   const visibleItems = useMemo(() => {
     const value = query.toLocaleLowerCase("pt-BR").trim();
